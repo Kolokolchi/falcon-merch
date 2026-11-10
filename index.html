@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FALCON — коллекция мерча · Izum Design &amp; Production</title>
+  <meta name="robots" content="noindex">
+  <link rel="preload" href="fonts/GothamPro-BlackItalic.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app" id="app" data-mode="browse">
+    <div class="bg bg-studio"></div>
+    <div class="bg bg-flood" id="flood"></div>
+    <div class="ghost" aria-hidden="true"><span>FALCON</span></div>
+    <div class="floor" aria-hidden="true"></div>
+
+    <header class="top">
+      <div class="brand">
+        <img src="img/izum-logo.png" alt="Izum">
+        <span>Izum<br>Design &amp; Production</span>
+      </div>
+      <div class="top-right">
+        <span class="tag">Коллекция FALCON</span>
+        <span class="count" id="count">01 / 15</span>
+      </div>
+    </header>
+
+    <div class="pedestal pedestal-top" aria-hidden="true"></div>
+    <div class="pedestal pedestal-bottom" aria-hidden="true"></div>
+
+    <div class="stage" id="stage"></div>
+
+    <!-- Режим очереди -->
+    <div class="browse-ui">
+      <button class="arrow arrow-prev" id="prev" aria-label="Предыдущий объект"><svg viewBox="0 0 24 24"><path d="M15 4l-8 8 8 8"/></svg></button>
+      <button class="arrow arrow-next" id="next" aria-label="Следующий объект"><svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8"/></svg></button>
+      <div class="caption">
+        <div class="caption-set" id="capSet"></div>
+        <h1 class="caption-name" id="capName"></h1>
+        <div class="rail"><i id="railDot"></i></div>
+        <button class="open-btn" id="openBtn">Смотреть объект</button>
+      </div>
+    </div>
+
+    <!-- Режим презентации объекта -->
+    <div class="detail-ui" id="detail" aria-live="polite">
+      <div class="panel">
+        <div class="kicker"><b id="dNum">01</b><span id="dSet"></span></div>
+        <h2 class="title" id="dTitle"></h2>
+        <div class="chapters">
+          <section class="chapter" data-ch="0">
+            <p class="lead" id="dText"></p>
+            <div class="kit"><span>В комплекте</span><ul id="dKit"></ul></div>
+          </section>
+          <section class="chapter" data-ch="1">
+            <h3>Материалы</h3>
+            <dl class="specs" id="dMat"></dl>
+          </section>
+          <section class="chapter" data-ch="2">
+            <h3>Брендирование</h3>
+            <dl class="specs" id="dBrand"></dl>
+          </section>
+        </div>
+        <div class="panel-nav">
+          <button class="back" id="back"><svg viewBox="0 0 24 24"><path d="M15 4l-8 8 8 8"/></svg>В коллекцию</button>
+          <button class="more" id="more">Дальше<svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8"/></svg></button>
+        </div>
+      </div>
+      <nav class="dots" id="dots" aria-label="Разделы">
+        <button data-ch="0" aria-label="Описание"><i></i><span>Описание</span></button>
+        <button data-ch="1" aria-label="Материалы"><i></i><span>Материалы</span></button>
+        <button data-ch="2" aria-label="Брендирование"><i></i><span>Брендирование</span></button>
+      </nav>
+      <button class="arrow arrow-prev d-arrow" id="dPrev" aria-label="Предыдущий объект"><svg viewBox="0 0 24 24"><path d="M15 4l-8 8 8 8"/></svg></button>
+      <button class="arrow arrow-next d-arrow" id="dNext" aria-label="Следующий объект"><svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8"/></svg></button>
+    </div>
+
+    <div class="hint" id="hint">Листайте колесом или перетаскиванием · нажмите на объект</div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
