@@ -80,9 +80,7 @@ def cut(im):
 
 cuts = [cut(frames[i]) for i in idx]
 
-# Модель иногда «перескакивает» между соседними кадрами (чаще всего в самом конце, подгоняя
-# последний кадр под первый). Такой скачок заменяем коротким растворением: несколько кадров перед
-# ним становятся плавной смесью опорных кадров. Нулевой кадр (исходная поза) не трогаем.
+# Модель иногда «перескакивает» между соседними кадрами (чаще в конце, подгоняя последний кадр под первый).
 def premul(c):
     c = c.astype(np.float32); c[..., :3] *= c[..., 3:] / 255; return c
 small = [cv2.resize(premul(c), (160, 120), interpolation=cv2.INTER_AREA) for c in cuts]
@@ -91,13 +89,8 @@ med = np.median(step)
 # скачок — одиночный всплеск: заметно больше и общего уровня, и соседних шагов
 jumps = [int(k) for k in range(want) if step[k] > 3.2 * med
          and step[k] > 2.2 * max(step[(k - 2) % want], step[(k + 2) % want])]
-B = 6
-for k in jumps:
-    a, b = premul(cuts[(k - B) % want]), premul(cuts[(k + 1) % want])
-    for j in range(1, B + 1):
-        m = a + (b - a) * (j / (B + 1))
-        al = np.maximum(m[..., 3:], 1e-3)
-        cuts[(k - B + j) % want] = np.dstack([np.clip(m[..., :3] * 255 / al, 0, 255), m[..., 3]]).astype(np.uint8)
+# Скачки только отмечаем в отчёте. Растворять их нельзя: смесь двух разных поз даёт полупрозрачный
+# «призрак». Лечится перегенерацией ролика.
 
 boxes = []
 for c in cuts:
@@ -114,4 +107,4 @@ meta = {"dir": f"img/turn/{pid}", "n": want, "fw": int(x1 - x0), "fh": int(y1 - 
         "ox": int(xs.min() - x0), "oy": int(ys.min() - y0), "ow": int(xs.max() + 1 - xs.min()), "oh": int(ys.max() + 1 - ys.min())}
 size = sum(os.path.getsize(os.path.join(out, f)) for f in os.listdir(out))
 sys.stdout.reconfigure(encoding="utf-8")
-print("turn:", json.dumps(meta), f"  // {size // 1024} КБ, исходных кадров {total}, сглажено скачков: {jumps}")
+print("turn:", json.dumps(meta), f"  // {size // 1024} КБ, исходных кадров {total}, скачки между кадрами: {jumps}")

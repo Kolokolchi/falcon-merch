@@ -52,43 +52,70 @@
 
   // Объект с «вертушкой» (it.turn): вместо плоской вырезки — кадры настоящего оборота,
   // снятые с ролика. Номер кадра задаётся углом поворота, поэтому объект реально вращается.
-  function loadTurn(node, turn) { turnQueue.push({ node, turn }); }
+  // Загрузка в два прохода: сначала у всех объектов кадры около исходной позы (объект сразу «оживает»),
+  // потом остальные кадры оборота — начиная с объектов ближе к центру.
+  function loadTurn(node, turn) { turnQueue.push({ node, turn, phase: 1 }); }
+  const frameUrl = (turn, k) => `${turn.dir}/${String(k).padStart(3, "0")}.webp`;
   function nextTurn() {
     if (turnBusy || !turnQueue.length) return;
-    // сначала объекты, которые ближе к центру очереди (и выбранный)
-    turnQueue.sort((p, q) => dist(p.node) - dist(q.node));
-    const { node, turn } = turnQueue.shift();
+    turnQueue.sort((p, q) => p.phase - q.phase || dist(p.node) - dist(q.node));
+    const job = turnQueue.shift(), { node, turn } = job;
     turnBusy = true;
-    const urls = Array.from({ length: turn.n }, (_, k) => `${turn.dir}/${String(k).padStart(3, "0")}.webp`);
-    Promise.all(urls.map((u) => fetch(u).then((r) => { if (!r.ok) throw new Error(u); return r.blob(); })))
-      .then(async (blobs) => {
+    let work;
+    if (job.phase === 1) {
+      const ks = restFrames(turn.n);
+      work = fetchAll(ks.map((k) => frameUrl(turn, k))).then(async (got) => {
         const canvas = document.createElement("canvas");
         canvas.className = "turn";
         canvas.width = turn.fw; canvas.height = turn.fh;
-        const t = { ...turn, canvas, ctx: canvas.getContext("2d"), blobs, lo: new Array(turn.n), hi: new Array(turn.n),
-                    full: false, busy: false, drop: false, dirty: true, pos: -1 };
+        const t = { ...turn, canvas, ctx: canvas.getContext("2d"), blobs: new Array(turn.n), lo: new Array(turn.n), hi: new Array(turn.n),
+                    complete: false, full: false, busy: false, drop: false, dirty: true, shown: null };
+        ks.forEach((k, j) => { t.blobs[k] = got[j]; });
         await decodeRest(t);
         node.turn = t;
         node.el.append(canvas);
         node.el.classList.add("turning");
         layout();
-      })
-      .catch(() => {})                       // кадры не загрузились — остаётся плоская вырезка
-      .finally(() => { turnBusy = false; nextTurn(); });
+        turnQueue.push({ node, turn, phase: 2 });
+      });
+    } else {
+      const t = node.turn, ks = [];
+      for (let k = 0; k < t.n; k++) if (!t.blobs[k]) ks.push(k);
+      work = fetchAll(ks.map((k) => frameUrl(turn, k))).then((got) => {
+        ks.forEach((k, j) => { t.blobs[k] = got[j]; });
+        t.complete = true;
+      });
+    }
+    work.catch(() => { if ((job.tries = (job.tries || 0) + 1) < 3) turnQueue.push(job); })   // не вышло — попробуем позже
+        .finally(() => { turnBusy = false; nextTurn(); });
+  }
+
+  // Загрузка кадров: не больше 8 запросов сразу и до 4 попыток на файл — по сети отдельные запросы срываются.
+  async function fetchAll(urls) {
+    const out = new Array(urls.length);
+    let next = 0;
+    const one = async (u) => {
+      for (let attempt = 0; ; attempt++) {
+        try { const r = await fetch(u); if (r.ok) return await r.blob(); throw new Error(r.status); }
+        catch (err) { if (attempt >= 3) throw err; await new Promise((res) => setTimeout(res, 400 * (attempt + 1))); }
+      }
+    };
+    const worker = async () => { while (next < urls.length) { const k = next++; out[k] = await one(urls[k]); } };
+    await Promise.all(Array.from({ length: 8 }, worker));
+    return out;
   }
 
   // Кадры хранятся сжатыми, а распаковываются заранее, чтобы вращение не запиналось на декодировании:
   //  • у каждого объекта — кадры около исходной позы в половинном размере (их хватает для очереди);
   //  • у объекта в центре и у выбранного — весь оборот в полном размере; когда объект уходит, они освобождаются.
-  const REST = 15;
+  const REST = 20;
+  const restFrames = (n) => { const ks = []; for (let j = -2; j <= REST; j++) ks.push(mod(j, n)); return ks; };
   async function decodeRest(t) {
     const half = Math.max(1, Math.round(t.fw / 2));
-    const ks = [];
-    for (let j = -REST; j <= REST; j++) ks.push(mod(j, t.n));
-    await Promise.all(ks.map(async (k) => { t.lo[k] = await createImageBitmap(t.blobs[k], { resizeWidth: half, resizeQuality: "high" }); }));
+    await Promise.all(restFrames(t.n).map(async (k) => { t.lo[k] = await createImageBitmap(t.blobs[k], { resizeWidth: half, resizeQuality: "high" }); }));
   }
   async function decodeFull(t) {
-    if (t.full || t.busy) return;
+    if (t.full || t.busy || !t.complete) return;
     t.busy = true;
     for (let s = 0; s < t.n && !t.drop; s += 12) {
       const ks = [];
@@ -185,7 +212,10 @@
       let y = baseY + Math.sin(t * 0.9 + i * 1.3) * size * 0.04 * (1 - near * 0.6);
       let sc = 0.8 + 0.42 * near;
       let rz = (Math.sin(i * 2.1) * 10 + Math.sin(t * 0.5 + i) * 3.5) * (1 - near * 0.9);
-      let ry = (-ang * 0.3 * 180) / Math.PI + Math.sin(t * 0.4 + i * 0.7) * 5 * (1 - near);
+      // Объекты с кадрами оборота поворачиваются только вперёд от исходной позы (конец ролика бывает неровным)
+      // и без покачивания по углу: кадр должен меняться только при настоящем повороте.
+      let ry = n.turn ? (Math.abs(ang) * 0.3 * 180) / Math.PI
+                      : (-ang * 0.3 * 180) / Math.PI + Math.sin(t * 0.4 + i * 0.7) * 5 * (1 - near);
       let op = clamp((4.3 - ad) / 1.2, 0, 1);
 
       // остальные объекты отступают, когда один выбран
@@ -202,7 +232,7 @@
         z = lerp(z, 60, e) + arc * 300;
         sc = lerp(sc, n.heroK, e);
         rz = lerp(rz, -6 + Math.sin(t * 0.7) * 1.4, e);
-        ry = lerp(ry, Math.sin(t * 0.6) * 5, e);
+        ry = lerp(ry, n.turn ? 0 : Math.sin(t * 0.6) * 5, e);
         op = lerp(op, 1, e);
       }
       ry += n.rot;
@@ -221,18 +251,14 @@
       n.el.style.pointerEvents = op > 0.5 ? "auto" : "none";
       if (n.turn) {
         const t = n.turn;
-        // дробная позиция в обороте: рисуем смесь двух соседних кадров, чтобы не было «шагов»
-        const fp = mod((ry / 360) * t.n, t.n);
-        if (t.dirty || Math.abs(fp - t.pos) > 0.02) {
-          t.pos = fp; t.dirty = false;
-          const k = Math.floor(fp), f = fp - k, c = t.ctx;
-          const A = frameOf(t, k), B = frameOf(t, (k + 1) % t.n);
-          c.globalCompositeOperation = "source-over"; c.globalAlpha = 1;
-          c.clearRect(0, 0, t.fw, t.fh);
-          if (A && B && A !== B && f > 0.02) {
-            c.globalAlpha = 1 - f; c.drawImage(A, 0, 0, t.fw, t.fh);
-            c.globalCompositeOperation = "lighter"; c.globalAlpha = f; c.drawImage(B, 0, 0, t.fw, t.fh);
-          } else if (A) c.drawImage(A, 0, 0, t.fw, t.fh);
+        // Всегда один чёткий кадр — ближайший к углу. Смешивать соседние кадры нельзя: там, где позы
+        // различаются, смесь выглядит как полупрозрачный двойной контур.
+        const k = mod(Math.round((ry / 360) * t.n), t.n);
+        const img = frameOf(t, k);
+        if (img && (t.dirty || img !== t.shown)) {
+          t.shown = img; t.dirty = false;
+          t.ctx.clearRect(0, 0, t.fw, t.fh);
+          t.ctx.drawImage(img, 0, 0, t.fw, t.fh);
         }
         n.el.style.transform = `translate3d(${x}px,${y}px,${z}px) rotateZ(${rz}deg) scale(${sc})`;
         n.sh.style.visibility = "hidden";   // тень уже есть в кадрах
